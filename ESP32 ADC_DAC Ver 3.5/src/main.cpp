@@ -1,4 +1,4 @@
-// ESP32 ADC/DAC Version 4.0 //
+// ESP32 ADC/DAC Version 4.5 //
 
 // bring in required libraries 
 #include <Arduino.h>
@@ -11,17 +11,18 @@
 static esp_adc_cal_characteristics_t adc1_chars;
 float pitch_val; 
 int led_state = LOW;
+boolean SqaureWave_State = false; 
 
 // SQAURE WAVE FUNCTION //
-void SqaureWave(){
-  Serial.println("Your in the SqaureWave function!");
-  Serial.println("The red button has been pressed");
-
-  // toggle state of LED
-  led_state = !led_state;
-
+float SqaureWave(int led_state, float signal){
   // control LED arccoding to the toggleed sate
   digitalWrite(0, led_state);
+
+  // convert current sample to high or low based on treshold
+  signal = (signal > 128) ? 255 : 0;  
+
+  // return current sample to primary code 
+  return signal;
 }// end sqaure function 
 
 // OBJECT DECLARAIONS //
@@ -29,7 +30,7 @@ ezButton RedButton(16);
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("ESP32 ADC/DAC Version 4.0");
+  Serial.println("ESP32 ADC/DAC Version 4.5");
   // ADC characteristics, channel 1 ADC, Attenuated to max 3.9 V,  12 bit precision
   esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12, ADC_WIDTH_BIT_12, 0, &adc1_chars);
   // ADC attenuation for pin 33
@@ -50,7 +51,14 @@ void loop() {
 
   // Call square wave function using red button 34pin for led output test
   if (RedButton.isPressed()) {
-    SqaureWave();
+    SqaureWave_State = !SqaureWave_State; 
+  }
+
+  if (SqaureWave_State){
+    pitch_val = SqaureWave(HIGH, pitch_val);
+  } else {
+    led_state = LOW;
+    digitalWrite(0, led_state);
   }
 
   // Output corresponding analogue value, one shot mode
