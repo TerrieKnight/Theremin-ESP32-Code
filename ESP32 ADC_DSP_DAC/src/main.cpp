@@ -9,8 +9,8 @@
 
 // initialize variables
 static esp_adc_cal_characteristics_t adc1_chars;
-const int max_dig_volt = 196;
-const int mid_dig_volt = 98;
+const int max_dig_volt = 157;
+const int mid_dig_volt = 79;
 float curr_pitch_val = 0; 
 float fin_pitch_val = 0;
 float pre_pitch_val =0;
@@ -19,7 +19,7 @@ float curr_freq = 1000;
 boolean Wave_Up = true;
 boolean SquareWave_State = false;
 boolean TriangleWave_State = false;
-unsigned long pre_zero_cross; 
+unsigned long pre_zero_cross = 0; 
 unsigned long curr_period = 1000; 
 
 
@@ -49,9 +49,9 @@ float TriangleWave(float signal, float pre_signal, unsigned long curr_period, fl
   }
 
   // make sure value never surpasses threshold
-  tri_val = constrain(tri_val, 0, max_dig_volt);
+  tri_val = constrain(tri_val, 0, 255);
   return tri_val; 
-}
+}// end triangle function 
 
 // HARMONICS FUNCTION
 
@@ -120,5 +120,5 @@ void loop() {
   // Output corresponding analogue value, one shot mode
   dac_output_voltage(DAC_CHANNEL_2, fin_pitch_val);
   pre_pitch_val = curr_pitch_val;
-  delayMicroseconds(curr_period / 100);
+  
 }// end main loop
