@@ -1,4 +1,4 @@
-// ESP32 ADC/DAC Version 5.25 //
+// ESP32 ADC/DAC Version 5.5 //
 
 // bring in required libraries 
 #include <Arduino.h>
@@ -9,33 +9,47 @@
 
 // initialize variables
 static esp_adc_cal_characteristics_t adc1_chars;
-float pitch_val; 
-float fin_pitch_val;
-float pre_val;
-float tri_val; 
+const int max_dig_volt = 196;
+const int mid_dig_volt = 98;
+float curr_pitch_val = 0; 
+float fin_pitch_val = 0;
+float pre_pitch_val =0;
+float tri_val = 0; 
+float curr_freq = 1000;
+boolean Wave_Up = true;
 boolean SquareWave_State = false;
 boolean TriangleWave_State = false;
+unsigned long pre_zero_cross; 
+unsigned long curr_period = 1000; 
+
 
 // SQAURE WAVE FUNCTION //
 float SquareWave(float signal){
   // convert current sample to high or low based on treshold and return
-  signal = (signal > 64) ? 255 : 0;  
+  signal = (signal > mid_dig_volt) ? max_dig_volt : 0;  
   return signal;
 }// end sqaure function 
 
 // TRIANGLE WAVE FUNCTION //
-float TriangleWave(float signal, float pre_signal, float &tri_val){
-  // increment of decrement trianlge output based on sine wave
+float TriangleWave(float signal, float pre_signal, unsigned long curr_period, float &tri_val){
+  // determine step sized based off frequency with 100 steps per rise/fall
+  int tri_steps = (curr_period / 2) / 100;  
+  tri_steps = max(1, max_dig_volt / tri_steps);
+
+  // increment and decrement triangle output based on sine wave
   if (signal > pre_signal) {
-    if (tri_val < 255) {
-        ++tri_val;
+    if (tri_val < max_dig_volt) {
+        tri_val += tri_steps;
     }
   }
   else if (signal < pre_signal) {
     if (tri_val > 0) {
-        --tri_val;
+        tri_val -= tri_steps;
     }
   }
+
+  // make sure value never surpasses threshold
+  tri_val = constrain(tri_val, 0, max_dig_volt);
   return tri_val; 
 }
 
@@ -47,7 +61,7 @@ ezButton YellowButton(17);
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("ESP32 ADC/DAC Version 5.25");
+  Serial.println("ESP32 ADC/DAC Version 5.5");
   // ADC characteristics, channel 1 ADC, Attenuated to max 3.9 V,  12 bit precision
   esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12, ADC_WIDTH_BIT_12, 0, &adc1_chars);
   // ADC attenuation for pin 33
@@ -64,9 +78,21 @@ void loop() {
   YellowButton.loop();
 
   // Recieve pitch value from pin 33 and convert to 8 bit resolution, one shot mode
-  pitch_val = adc1_get_raw(ADC1_CHANNEL_5)>>4;
+  curr_pitch_val = adc1_get_raw(ADC1_CHANNEL_5)>>4;
 
-  // Call square wave function using red button 34pin for led output test
+  // Determine the current period and frequency 
+  if (pre_pitch_val < mid_dig_volt && curr_pitch_val >= mid_dig_volt){
+    // get time between current crossing (in microseonds) and previous 
+    curr_period = micros() - pre_zero_cross; 
+    pre_zero_cross = micros();
+
+    if (curr_period > 0){
+      // convert from micro to seconds and caluclate frequency 
+      curr_freq = 1000000 / curr_period; 
+    }
+  }
+
+  // Check buttons for function calls 
   if (RedButton.isPressed()) {
     TriangleWave_State = false;
     SquareWave_State = !SquareWave_State; 
@@ -75,21 +101,24 @@ void loop() {
   if(YellowButton.isPressed()){
     SquareWave_State = false;
     TriangleWave_State = !TriangleWave_State;
-    tri_val = pitch_val;
+    tri_val = curr_pitch_val;
   }
 
+  // Function calls
   if(SquareWave_State){
-    fin_pitch_val = SquareWave(pitch_val);
+    fin_pitch_val = SquareWave(curr_pitch_val);
   } 
 
   if(TriangleWave_State){
-    fin_pitch_val = TriangleWave(pitch_val, pre_val, tri_val);
+    fin_pitch_val = TriangleWave(curr_pitch_val, pre_pitch_val, curr_period, tri_val);
   }
 
   if(!SquareWave_State && !TriangleWave_State){
-    fin_pitch_val = pitch_val;
+    fin_pitch_val = curr_pitch_val;
   }
+
   // Output corresponding analogue value, one shot mode
   dac_output_voltage(DAC_CHANNEL_2, fin_pitch_val);
-  pre_val = pitch_val;
+  pre_pitch_val = curr_pitch_val;
+  delayMicroseconds(curr_period / 100);
 }// end main loop
