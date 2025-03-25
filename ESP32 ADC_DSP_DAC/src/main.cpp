@@ -1,4 +1,4 @@
-// ESP32 ADC/DAC Version 5.5 //
+// ESP32 ADC/DAC Version 5.75 //
 
 // bring in required libraries 
 #include <Arduino.h>
@@ -13,12 +13,13 @@ const int max_dig_volt = 157;
 const int mid_dig_volt = 79;
 float curr_pitch_val = 0; 
 float fin_pitch_val = 0;
-float pre_pitch_val =0;
+float pre_pitch_val = 0;
 float tri_val = 0; 
 float curr_freq = 1000;
 boolean Wave_Up = true;
 boolean SquareWave_State = false;
 boolean TriangleWave_State = false;
+boolean Harmonics_State = false;
 unsigned long pre_zero_cross = 0; 
 unsigned long curr_period = 1000; 
 
@@ -53,15 +54,31 @@ float TriangleWave(float signal, float pre_signal, unsigned long curr_period, fl
   return tri_val; 
 }// end triangle function 
 
-// HARMONICS FUNCTION
+// HARMONICS FUNCTION //
+float AddHarmonics(float signal, float fund_freq, int num_harm){
+  float harm_signal = signal;
+
+  // generate sine wave using fundamental freq and harmonic number
+  // add it to current signal 
+  harm_signal += (signal / num_harm) * sin(2 * PI * num_harm * fund_freq);
+
+  // make sure value never surpasses threshold 
+  harm_signal = constrain(harm_signal, 0, 255);
+
+  return harm_signal;
+}// end harmonics function 
+
+// EQUALIZER FUNCTION //
+
 
 // OBJECT DECLARAIONS //
 ezButton RedButton(16);
 ezButton YellowButton(17);  
+ezButton BlueButton(5);
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("ESP32 ADC/DAC Version 5.5");
+  Serial.println("ESP32 ADC/DAC Version 5.75");
   // ADC characteristics, channel 1 ADC, Attenuated to max 3.9 V,  12 bit precision
   esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12, ADC_WIDTH_BIT_12, 0, &adc1_chars);
   // ADC attenuation for pin 33
@@ -70,12 +87,14 @@ void setup() {
   // set debounce time to 50 milliseconds for red button
   RedButton.setDebounceTime(50); 
   YellowButton.setDebounceTime(50);
+  BlueButton.setDebounceTime(50);
 }// end void set up 
 
 void loop() {
   // declare needed loops for inputs 
   RedButton.loop(); 
   YellowButton.loop();
+  BlueButton.loop();
 
   // Recieve pitch value from pin 33 and convert to 8 bit resolution, one shot mode
   curr_pitch_val = adc1_get_raw(ADC1_CHANNEL_5)>>4;
@@ -95,13 +114,21 @@ void loop() {
   // Check buttons for function calls 
   if (RedButton.isPressed()) {
     TriangleWave_State = false;
+    Harmonics_State = false;
     SquareWave_State = !SquareWave_State; 
   }
 
   if(YellowButton.isPressed()){
     SquareWave_State = false;
+    Harmonics_State = false;
     TriangleWave_State = !TriangleWave_State;
     tri_val = curr_pitch_val;
+  }
+
+  if(BlueButton.isPressed()){
+    SquareWave_State = false;
+    TriangleWave_State = false;
+    Harmonics_State = !Harmonics_State;
   }
 
   // Function calls
@@ -113,7 +140,7 @@ void loop() {
     fin_pitch_val = TriangleWave(curr_pitch_val, pre_pitch_val, curr_period, tri_val);
   }
 
-  if(!SquareWave_State && !TriangleWave_State){
+  if(!SquareWave_State && !TriangleWave_State & !Harmonics_State){
     fin_pitch_val = curr_pitch_val;
   }
 
