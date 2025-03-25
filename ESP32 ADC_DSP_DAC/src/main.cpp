@@ -140,6 +140,10 @@ void loop() {
     fin_pitch_val = TriangleWave(curr_pitch_val, pre_pitch_val, curr_period, tri_val);
   }
 
+  if(Harmonics_State){
+    fin_pitch_val = AddHarmonics(curr_pitch_val, curr_freq, 2);
+  }
+
   if(!SquareWave_State && !TriangleWave_State & !Harmonics_State){
     fin_pitch_val = curr_pitch_val;
   }
