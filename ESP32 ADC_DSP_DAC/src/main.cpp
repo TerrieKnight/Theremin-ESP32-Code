@@ -18,7 +18,7 @@ float pre_pitch_val = 0;
 float tri_val = 0; 
 float Q = 1;
 float curr_freq = 1000;
-float samp_freq = 22100;
+float samp_freq = 22500;
 float gain_low = 0;
 float gain_mid = 0;
 float gain_high = 0;
@@ -50,7 +50,7 @@ float SquareWave(float signal){
 // TRIANGLE WAVE FUNCTION //
 float TriangleWave(float signal, float pre_signal, unsigned long curr_period, float &tri_val){
   // determine step sized based off frequency with 100 steps per rise/fall
-  int tri_steps = (curr_period / 2) / 100;  
+  int tri_steps = max(1, (int)(curr_period / 2) / 100);  
   tri_steps = max(1, max_dig_volt / tri_steps);
 
   // increment and decrement triangle output based on sine wave
@@ -85,12 +85,7 @@ float AddHarmonics(float signal, float fund_freq, int num_harm){
 }// end harmonics function 
 
 // EQUALIZER COEFFICIENTS FUNCTION //
-void set_biquad_coefs(float f0_low, float f0_mid, float f0_high, float Fs, float qFactor, float db_low, float db_mid, float db_high){
-  // calculate the amplification factor for each band using gain in db 
-  float A_low = pow(10.0, db_low / 40.0);
-  float A_mid = pow(10.0, db_mid / 40.0);
-  float A_high = pow(10.0, db_high / 40.0);
-  
+void set_biquad_coefs(float f0_low, float f0_mid, float f0_high, float Fs, float qFactor){
   // normalize filter cut off frequnecies to range 0 - 0.5 
   float f_low = f0_low / (Fs / 2.0);
   float f_mid = f0_mid / (Fs / 2.0);
@@ -100,21 +95,19 @@ void set_biquad_coefs(float f0_low, float f0_mid, float f0_high, float Fs, float
   dsps_biquad_gen_lpf_f32(coef_low, f_low, qFactor);
   dsps_biquad_gen_bpf_f32(coef_mid, f_mid, qFactor); 
   dsps_biquad_gen_hpf_f32(coef_high, f_high, qFactor);
-
-  // Apply gain for each filter
-  for (int i = 0; i < 3; i++) {
-    coef_low[i] *= A_low;
-    coef_mid[i] *= A_mid;
-    coef_high[i] *= A_high;
-  }
 }// end equilizer coefficient function
 
 // EQAULIZER FUNCTION //
-float EQfunction(float in_signal){
+float EQfunction(float in_signal, float db_low, float db_mid, float db_high){
   float out_low = 0;
   float out_mid = 0;
   float out_high = 0;
   float out_signal = 0;
+
+  // calculate amplitude from db gain 
+  float amp_low = pow(10.0, db_low / 20.0);
+  float amp_mid = pow(10.0, db_mid / 20.0);
+  float amp_high = pow(10.0, db_high / 20.0);
 
   // use biquad iir filter for each band 
   dsps_biquad_f32_ae32(&in_signal, &out_low, 1, coef_low, w_low);
@@ -122,7 +115,7 @@ float EQfunction(float in_signal){
   dsps_biquad_f32_ae32(&in_signal, &out_high, 1, coef_high, w_high);
   
   // combine bands back together for output
-  out_signal = out_low + out_mid + out_high;
+  out_signal = amp_low*out_low + amp_mid*out_mid + amp_high*out_high;
   return out_signal;
 }// end equilizer function 
 
@@ -174,6 +167,9 @@ void loop() {
       // convert from micro to seconds and caluclate frequency 
       curr_freq = 1000000 / curr_period; 
     }
+    else{
+      curr_freq = 0;
+    }
   }
 
   // Check buttons for function calls 
@@ -221,13 +217,13 @@ void loop() {
 
   if(Equilizer_State){
     // set coefficinet for biquad iir filter 
-    set_biquad_coefs(f0_low, f0_mid, f0_high, samp_freq, Q, gain_low, gain_mid, gain_high);
+    set_biquad_coefs(f0_low, f0_mid, f0_high, samp_freq, Q);
 
     // run filter 
-    fin_pitch_val = EQfunction(curr_pitch_val);
+    fin_pitch_val = EQfunction(curr_pitch_val, gain_low, gain_mid, gain_high);
   }
 
-  if(!SquareWave_State && !TriangleWave_State & !Harmonics_State & !Equilizer_State){
+  if(!SquareWave_State && !TriangleWave_State && !Harmonics_State && !Equilizer_State){
     fin_pitch_val = curr_pitch_val;
   }
 
