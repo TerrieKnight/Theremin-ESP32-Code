@@ -1,4 +1,4 @@
-// ESP32 ADC/DAC Version 6.0 //
+// ESP32 ADC/DAC Version 6.5 //
 
 // bring in required libraries 
 #include <Arduino.h>
@@ -7,6 +7,8 @@
 #include <driver/dac.h>
 #include <ezButton.h>
 #include <esp_dsp.h>
+#include <WIFI.h>
+#include <esp_now.h>
 
 // initialize variables
 static esp_adc_cal_characteristics_t adc1_chars;
@@ -39,6 +41,42 @@ boolean Equilizer_State = false;
 unsigned long pre_zero_cross = 0; 
 unsigned long curr_period = 1000; 
 
+int low;
+int mid;
+int high;
+bool harm_data[10];
+bool wave_data[3];
+
+struct settings_struct {
+  int l;
+  int m;
+  int h;
+  bool h_data[10];
+  bool w_data[3];
+};
+
+settings_struct settings;
+
+void OnDataRecv (const uint8_t * mac, const uint8_t *incomingData, int len) {
+  memcpy(&settings, incomingData, sizeof(settings));
+  Serial.print("Bytes Received: ");
+  Serial.println(len);
+  Serial.println("---Data Received---");
+  low = settings.l;
+  mid = settings.m;
+  high = settings.h;
+  Serial.printf("Equalizer: %d %d %d\n", low, mid, high);
+  Serial.print("Harmonics Data:");
+  for (int i = 0; i < 10; i++) {
+    harm_data[i] = settings.h_data[i];
+    Serial.printf("%d ", harm_data[i]);
+  }
+  Serial.printf("\nWave Data: ");
+  for (int i = 0; i < 3; i++) {
+    wave_data[i] = settings.w_data[i];
+    Serial.printf("%d ", wave_data[i]);
+  }
+}
 
 // SQAURE WAVE FUNCTION //
 float SquareWave(float signal){
@@ -49,7 +87,7 @@ float SquareWave(float signal){
 
 // TRIANGLE WAVE FUNCTION //
 float TriangleWave(float signal, float pre_signal, unsigned long curr_period, float &tri_val){
-  // determine step sized based off frequency with 100 steps per rise/fall
+  // determine step sized based off period with 100 steps per rise/fall
   int tri_steps = max(1, (int)(curr_period / 2) / 100);  
   tri_steps = max(1, max_dig_volt / tri_steps);
 
@@ -73,10 +111,14 @@ float TriangleWave(float signal, float pre_signal, unsigned long curr_period, fl
 // HARMONICS FUNCTION //
 float AddHarmonics(float signal, float fund_freq, int num_harm){
   float harm_signal = signal;
+  float t = micros() / 1e6; 
 
   // generate sine wave using fundamental freq and harmonic number
   // add it to current signal 
-  harm_signal += (signal / num_harm) * sin(2 * PI * num_harm * fund_freq);
+  harm_signal += (signal / num_harm) * sin(2 * PI * num_harm * fund_freq * t);
+
+  // half wave rectification 
+  harm_signal = max(harm_signal, 0.0f);
 
   // make sure value never surpasses threshold 
   harm_signal = constrain(harm_signal, 0, 255);
@@ -129,7 +171,8 @@ ezButton GreenButton(18);
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("ESP32 ADC/DAC Version 6.0");
+  Serial.println("ESP32 ADC/DAC Version 6.5");
+  WiFi.mode(WIFI_STA);
   // ADC characteristics, channel 1 ADC, Attenuated to max 3.9 V,  12 bit precision
   esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12, ADC_WIDTH_BIT_12, 0, &adc1_chars);
   // ADC attenuation for pin 33
@@ -140,6 +183,8 @@ void setup() {
   YellowButton.setDebounceTime(50);
   BlueButton.setDebounceTime(50);
   GreenButton.setDebounceTime(50);
+
+  esp_now_register_recv_cb(esp_now_recv_cb_t(OnDataRecv));
 }// end void set up 
 
 void loop() {
@@ -213,6 +258,11 @@ void loop() {
 
   if(Harmonics_State){
     fin_pitch_val = AddHarmonics(curr_pitch_val, curr_freq, 2);
+
+    // delete this later 
+    fin_pitch_val = AddHarmonics(curr_pitch_val, curr_freq, 3);
+    fin_pitch_val = AddHarmonics(curr_pitch_val, curr_freq, 4);
+    fin_pitch_val = AddHarmonics(curr_pitch_val, curr_freq, 5);
   }
 
   if(Equilizer_State){

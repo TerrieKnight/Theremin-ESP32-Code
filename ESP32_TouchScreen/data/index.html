@@ -1,0 +1,260 @@
+<!-- ESP32 Web App Version 2.0 -->
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+      <meta charset="utf-8">
+      <title>A/D Theremin Webapp</title>
+
+      <!-- Stylings -->
+      <style>
+        body {
+          background-color: #747277; margin: 0; 
+        }
+
+        .Res_BTN { 
+          width: 180px; height: 80px; border-radius: 45%; background-color: #8F6DB0; color: rgb(223, 222, 222);
+          border: 5px solid #C3ACD0; font-size: 20px; cursor: pointer;
+        }      
+        .Res_BTN:hover {
+          background-color: #9E77B6;
+        }
+        .Res_BTN:active {
+          transform: scale(0.95); box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2); 
+        }
+
+
+        .Menu_box {
+          background-color: #C3ACD0; margin: 10px 0; padding: 15px; border-radius: 18px; font-size: 18px; pointer-events: none;
+        }
+        .Menu_box .header {font-weight: bold; margin-bottom: 5px;
+        }
+        
+        .Harmonics {display: inline-block; margin: 5px; padding: 8px 8px; border-radius: 10px; font-weight: bold; font-size: 14px;
+        }
+        .Harmonics.unused {color: #808080; background-color: #e0dfe0; 
+        }
+        .Harmonics.used {color: #e0dfe0; background-color: #808080; 
+        }
+
+        .EQ_box {display: flex; justify-content: center; align-items: center;  height: 150px; gap: 30px;
+        }
+        .EQ_Bands {display: flex; flex-direction: column; align-items: center; width: 40px; margin: 2px;
+        }
+        .EQ_slider {width: 90px; height: 130px; background: #ddd; border-radius: 10px; outline: none;
+          transform: rotate(270deg); pointer-events: none;
+        }
+
+      </style>
+    </head>
+
+<!--Sidebar Section-->
+<body>
+  <!-- Waveform Harmonic and Equilizer Display Boxes-->
+  <div style="position: fixed; top: 0; left: 0; width: 250px; height: 100vh; background-color: #A183C0; padding-top: 80px;
+                text-align: center; box-sizing: border-box;box-shadow: 0 0 10px #00000033; color: white;">
+
+    <!--Reset Button-->
+    <button class="Res_BTN">Reset</button>
+
+    <!--Waveform and Harmonic Display-->
+    <div style="width: 100%; margin: 30px auto; padding: 7px; background-color: #8F6DB0; 
+      border-radius: 10px; box-shadow: 0 0 10px #00000033; text-align: center;">
+      <!-- Current Waveform -->
+      <div class="Menu_box">
+        <div class="header">Current Waveform:</div>
+        <div id="Curr_WF" style="color: white;">Sine Wave</div>
+      </div>
+
+      <!-- Current Active Harmonics -->
+      <div class="Menu_box">
+        <div class="header">
+          Current Active Harmonics:
+        </div>
+        <div id="All_Harmonics">
+          <span class="Harmonics unused">1</span>
+          <span class="Harmonics unused">2</span>
+          <span class="Harmonics unused">3</span>
+          <span class="Harmonics unused">4</span>
+          <span class="Harmonics unused">5</span>
+          <span class="Harmonics unused">6</span>
+          <span class="Harmonics unused">7</span>
+          <span class="Harmonics unused">8</span>
+          <span class="Harmonics unused">9</span>
+          <span class="Harmonics unused">10</span>
+        </div>
+      </div>
+    </div>
+
+    <!--Equalizer Display-->
+    <div style="width: 90%; margin: 30px auto; padding: 20px; background-color: #8F6DB0; border-radius: 10px;
+                  box-shadow: 0 0 10px #00000033; text-align: center;">
+      <div class="EQ_box">
+        <!-- Lower band -->
+        <div class="EQ_Bands">
+          <div style="color: white; font-size: 15px;">LOW</div>
+          <input type="range" id="Low_Band" class="EQ_slider" min="-6" max="6" step="1" value="0"
+            oninput="updateSliderEQVal('Low_Band', 'LB_val')">
+          <div style="display: flex; align-items: center;">
+            <div id="LB_val" style="color: white; font-size: 14px; margin-right: 4px;">0</div>
+            <div style="color: white; font-size: 14px;">dB</div>
+          </div>
+        </div>
+
+        <!-- Middle band -->
+        <div class="EQ_Bands">
+          <div style="color: white; font-size: 15px;">MID</div>
+          <input type="range" id="Mid_Band" class="EQ_slider" min="-6" max="6" step="1" value="0"
+            oninput="updateSliderEQVal('Mid_Band', 'MB_val')">
+          <div style="display: flex; align-items: center;">
+            <div id="MB_val" style="color: white; font-size: 14px; margin-right: 4px;">0</div>
+            <div style="color: white; font-size: 14px;">dB</div>
+          </div>
+        </div>
+
+        <!-- Upper band -->
+        <div class="EQ_Bands">
+          <div style="color: white; font-size: 15px;">HIGH</div>
+          <input type="range" id="Up_Band" class="EQ_slider" min="-6" max="6" step="1" value="0"
+            oninput="updateSliderEQVal('Up_Band', 'UB_val')">
+          <div style="display: flex; align-items: center;">
+            <div id="UB_val" style="color: white; font-size: 14px; margin-right: 4px;">0</div>
+            <div style="color: white; font-size: 14px;">dB</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Touchscreen Script -->
+  <script>
+    // connect to touch screen and webpage
+    var W_Sock = new WebSocket(`ws://${window.location.hostname}:81`);
+
+    // read data to html 
+    W_Sock.onmessage = function (event) {
+      var data = JSON.parse(event.data);
+
+      // Waveform 
+      const Active_Waves = ["Sine Wave", "Square Wave", "Triangle Wave"];
+      const waveform = data.waveform || [true, false, false];
+      const waveformIndex = waveform.findIndex(v => v === true);
+      document.getElementById("Curr_WF").textContent = Active_Waves[waveformIndex] || "Sine Wave";
+
+      // Harmonics 
+      const harmonics = data.harmonics || [];
+      const WA_Harm = document.getElementById("All_Harmonics").getElementsByClassName("Harmonics");
+
+      for (let i = 0; i < harmonics.length && i < WA_Harm.length; i++) {
+        WA_Harm[i].classList.toggle("used", harmonics[i]);
+        WA_Harm[i].classList.toggle("unused", !harmonics[i]);
+      }
+
+      // Equilizer
+      document.getElementById("Low_Band").value = data.l;
+      document.getElementById("LB_val").textContent = data.l;
+
+      document.getElementById("Mid_Band").value = data.m;
+      document.getElementById("MB_val").textContent = data.m;
+
+      document.getElementById("Up_Band").value = data.h;
+      document.getElementById("UB_val").textContent = data.h;
+    }
+  </script>
+</body><!--End Side Bar Section-->
+
+<!-- Primary Data Section-->
+<body>
+  <div style="margin-left: 250px; margin-top: 55px; padding: 40px;">
+    <!-- Oscilloscope Display Grid  -->
+    <div
+      style="display: grid; grid-template-columns: repeat(2, 350px); grid-template-rows: repeat(2, auto); gap: 20px;">
+
+      <!-- Top Left -->
+      <div style="background-color: #222; border: 2px solid #ccc; padding: 5px; text-align: center;">
+        <canvas id="Out_Signal" width="330" height="200"></canvas>
+        <div style="color: #ccc; margin-top: 8px;">Output Signal</div>
+      </div>
+
+      <!-- Top Right -->
+      <div style="background-color: #222; border: 2px solid #ccc; padding: 5px; text-align: center;">
+        <canvas id="In_Pitch" width="330" height="200"></canvas>
+        <div style="color: #ccc; margin-top: 8px;">Input Pitch Signal</div>
+      </div>
+
+      <!-- Bottom Left -->
+      <div style="background-color: #222; border: 2px solid #ccc; padding: 5px; text-align: center;">
+        <canvas id="Out_Vol" width="330" height="200"></canvas>
+        <div style="color: #ccc; margin-top: 8px;">Output Volume</div>
+      </div>
+
+      <!-- Bottom Right -->
+      <div style="background-color: #222; border: 2px solid #ccc; padding: 5px; text-align: center;">
+        <canvas id="Vis_Signal" width="330" height="200"></canvas>
+        <div style="color: #ccc; margin-top: 8px;">Visualizer</div>
+      </div>
+
+    </div>
+
+    <!-- Oscilloscope Script-->
+    <script>
+      function setupOscilloscope(canvasId, color) {
+        const canvas = document.getElementById(canvasId);
+        const ctx = canvas.getContext("2d");
+
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+        const voltsPerBit = 5 / 255;
+        const signal = new Array(canvasWidth).fill(0);
+
+        function draw() {
+          ctx.fillStyle = "#54626F";
+          ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+          // Grid
+          ctx.strokeStyle = "#444";
+          ctx.lineWidth = 1;
+          for (let i = 0; i <= 5; i++) {
+            const y = (i / 5) * canvasHeight;
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvasWidth, y);
+            ctx.stroke();
+          }
+
+          // Signal
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          for (let x = 0; x < signal.length; x++) {
+            const voltage = signal[x] * voltsPerBit;
+            const y = canvasHeight - (voltage / 5) * canvasHeight;
+            if (x === 0) {
+              ctx.moveTo(x, y);
+            } else {
+              ctx.lineTo(x, y);
+            }
+          }
+          ctx.stroke();
+        }
+
+        function updateSignal() {
+          // Simulated signal — replace with real input per channel
+          const newSample = Math.floor(Math.random() * 256);
+          signal.shift();
+          signal.push(newSample);
+          draw();
+        }
+
+        setInterval(updateSignal, 1000 / 3000); // 3kHz sampling
+      }
+
+      // Setup all 4 scopes
+      setupOscilloscope("Out_Signal", "#00FF00");
+      setupOscilloscope("In_Pitch", "#FF5733");
+      setupOscilloscope("Out_Vol", "#33C3FF");
+      setupOscilloscope("Vis_Signal", "#FF33EC"); 
+    </script>
+
+</body><!-- End Primary Data Section-->
+
+</html>

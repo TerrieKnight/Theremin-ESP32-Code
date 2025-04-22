@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page Title Here Garthy</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <h2>Theremin Voltage Graph</h2>
+    <canvas id="voltageChart"></canvas>
+    <script>
+        const ctx = document.getElementById('voltageChart').getContext('2d');
+        const voltageChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Voltage (V)',
+                    borderColor: 'rgb(75, 192, 192)',
+                    data: [],
+                    borderWidth: 2,
+                    fill: false,
+                    tension: 0.1
+                }]
+            },
+            options: {
+                scales: { x: { display: true }, y: { beginAtZero: true, max: 3.3 } }
+            }
+        });
+
+        function fetchData() {
+            fetch('/data')
+                .then(response => response.json())
+                .then(data => {
+                    let now = new Date().toLocaleTimeString();
+                    if (voltageChart.data.labels.length > 50) {
+                        voltageChart.data.labels.shift();
+                        voltageChart.data.datasets[0].data.shift();
+                    }
+                    voltageChart.data.labels.push(now);
+                    voltageChart.data.datasets[0].data.push(data.voltage);
+                    voltageChart.update();
+                });
+        }
+
+        setInterval(fetchData, 250);  // Update graph every 250ms
+    </script>
+</body>
+<script>
+    window.onload = function(event) {
+        init();
+    }
+
+    function init() {
+        Socket = new WebSocket('ws://' + window.location.hostname + ':81/');
+        Socket.onmessage = function(event) {
+            processCommand(event);
+        };
+    }
+
+    function processCommand(event) {
+    var obj = JSON.parse(event.data);
+    var type = obj.type;
+    if (type.localeCompare("random_intensity") == 0) { 
+        var l_random_intensity = parseInt(obj.value); 
+        console.log(l_random_intensity); 
+        slider.value = l_random_intensity; 
+        output.innerHTML = l_random_intensity;
+    }
+
+    else if (type.localeCompare("graph_update") == 0) {
+        console.log(obj.value);
+        myChart.data.datasets[0].data = obj.value;
+        myChart.update();
+    }
+    }
+</script>
+
+
+</html>

@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "ESP32 ADC_DSP_DAC"
+		},
+		{
+			"path": "ESP32_TouchScreen"
+		}
+	],
+	"settings": {}
+}
