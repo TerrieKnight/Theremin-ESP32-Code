@@ -1,4 +1,4 @@
-<!-- ESP32 Web App Version 2.0 -->
+<!-- ESP32 Web App Version 3.0 -->
 <!DOCTYPE html>
 <html lang="en">
     <head>
@@ -135,7 +135,7 @@
       var data = JSON.parse(event.data);
 
       // Waveform 
-      const Active_Waves = ["Sine Wave", "Square Wave", "Triangle Wave"];
+      const Active_Waves = ["Sine Wave", "Triangle Wave", "Sqaure Wave"];
       const waveform = data.waveform || [true, false, false];
       const waveformIndex = waveform.findIndex(v => v === true);
       document.getElementById("Curr_WF").textContent = Active_Waves[waveformIndex] || "Sine Wave";

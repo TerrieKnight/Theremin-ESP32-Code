@@ -1,4 +1,4 @@
-// ESP32 Touch Screen Version 2.0//
+// ESP32 Touch Screen Version 3.0//
 
 // bring in needed libraries 
 #include <TFT_eSPI.h>
@@ -15,7 +15,7 @@
 
 // Read pin for esp32 data theremin data
 const int analogPin = 34;  // GPIO34 = ADC1 Chan 6
-const char* gui_ver = "ThereminOS Ver. 2.0";
+const char* gui_ver = "ThereminOS Ver. 3.0";
 
 //Webserver Setup
 const char* ssid = "Boneca-Ambalabu";
@@ -182,9 +182,9 @@ lv_obj_t * sqr_btn;
   static void slider_event_callback(lv_event_t * e) {
     lv_obj_t * slider = (lv_obj_t*) lv_event_get_target(e);
     eq_id_t id = (eq_id_t)(uintptr_t)lv_event_get_user_data(e);
-    int val = lv_slider_get_value(slider);
+    int val = lv_slider_get_value(slider) - 6;
     char buf[8];
-    lv_snprintf(buf, sizeof(buf), "%d", (int)lv_slider_get_value(slider) - 6);
+    lv_snprintf(buf, sizeof(buf), "%d", (int)lv_slider_get_value(slider));
     switch(id) {
       case low_t: 
         last_low_val = val; 
@@ -667,9 +667,9 @@ if (esp_now_add_peer(&peerInfo) != ESP_OK){
   
 void loop() {
   //Data to send to other ESP32
-  settings.l = low;
-  settings.m = mid;
-  settings.h = high; 
+  settings.l = last_low_val;
+  settings.m = last_mid_val;
+  settings.h = last_high_val;
   for (int i = 0; i < 10; i++) {
     settings.h_data[i] = harm_data[i];
   }
