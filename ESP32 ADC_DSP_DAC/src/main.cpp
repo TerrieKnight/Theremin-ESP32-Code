@@ -1,4 +1,4 @@
-// ESP32 ADC/DAC Version 6.5 //
+// ESP32 ADC/DAC Version 8.0 //
 
 // bring in required libraries 
 #include <Arduino.h>
@@ -34,13 +34,14 @@ float coef_low[5];
 float coef_mid[5];
 float coef_high[5];
 boolean Wave_Up = true;
-boolean SquareWave_State = false;
-boolean TriangleWave_State = false;
-boolean Harmonics_State = false;
-boolean Equilizer_State = false;
+boolean SquareWave_State;
+boolean TriangleWave_State;
+boolean SineWave_State = true; 
 unsigned long pre_zero_cross = 0; 
 unsigned long curr_period = 1000; 
-
+static int last_low_val = -999;
+static int last_low_mid = -999;
+static int last_low_high = -999;
 int low;
 int mid;
 int high;
@@ -161,43 +162,25 @@ float EQfunction(float in_signal, float db_low, float db_mid, float db_high){
   return out_signal;
 }// end equilizer function 
 
-
-// OBJECT DECLARAIONS //
-ezButton RedButton(16);
-ezButton YellowButton(17);  
-ezButton BlueButton(5);
-ezButton GreenButton(18);
-
-
 void setup() {
   Serial.begin(115200);
-  Serial.println("ESP32 ADC/DAC Version 6.5");
+  Serial.println("ESP32 ADC/DAC Version 8.0");
   WiFi.mode(WIFI_STA);
+  esp_err_t esp_wifi_set_channel(1);
   // ADC characteristics, channel 1 ADC, Attenuated to max 3.9 V,  12 bit precision
   esp_adc_cal_characterize(ADC_UNIT_1, ADC_ATTEN_DB_12, ADC_WIDTH_BIT_12, 0, &adc1_chars);
   // ADC attenuation for pin 33
   adc1_config_channel_atten(ADC1_CHANNEL_5, ADC_ATTEN_DB_12); 
   dac_output_enable(DAC_CHANNEL_2);
-  // set debounce time to 50 milliseconds for buttons
-  RedButton.setDebounceTime(50); 
-  YellowButton.setDebounceTime(50);
-  BlueButton.setDebounceTime(50);
-  GreenButton.setDebounceTime(50);
 
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }  
   esp_now_register_recv_cb(esp_now_recv_cb_t(OnDataRecv));
 }// end void set up 
 
 void loop() {
-  // declare needed loops for inputs 
-  RedButton.loop(); 
-  YellowButton.loop();
-  BlueButton.loop();
-  GreenButton.loop();
-
-  // Test temp values for equilizer modification (will be user input in final ver.)
-  float gain_low = 3;
-  float gain_mid = -1.5;
-  float gain_high = 1;
 
   // Recieve pitch value from pin 33 and convert to 8 bit resolution, one shot mode
   curr_pitch_val = adc1_get_raw(ADC1_CHANNEL_5)>>4;
@@ -217,64 +200,44 @@ void loop() {
     }
   }
 
-  // Check buttons for function calls 
-  if (RedButton.isPressed()) {
-    TriangleWave_State = false;
-    Harmonics_State = false;
-    Equilizer_State = false;
-    SquareWave_State = !SquareWave_State; 
-  }
+  // Get states from touch screen
+  SquareWave_State = wave_data[2];
+  TriangleWave_State = wave_data[1];
+  SineWave_State = wave_data[0];
 
-  if(YellowButton.isPressed()){
-    SquareWave_State = false;
-    Harmonics_State = false;
-    Equilizer_State = false;
-    TriangleWave_State = !TriangleWave_State;
-    tri_val = curr_pitch_val;
-  }
+  // Equilizer modification
+  gain_low = low;
+  gain_mid = mid;
+  gain_high = high;
 
-  if(BlueButton.isPressed()){
-    SquareWave_State = false;
-    TriangleWave_State = false;
-    Equilizer_State = false;
-    Harmonics_State = !Harmonics_State;
-  }
-
-  if(GreenButton.isPressed()){
-    SquareWave_State = false;
-    TriangleWave_State = false;
-    Harmonics_State = false; 
-    Equilizer_State = !Equilizer_State;
-  }
-
-  // Function calls
-  if(SquareWave_State){
+  // Waveform selection
+  if (SquareWave_State) {
     fin_pitch_val = SquareWave(curr_pitch_val);
-  } 
-
-  if(TriangleWave_State){
+  } else if (TriangleWave_State) {
     fin_pitch_val = TriangleWave(curr_pitch_val, pre_pitch_val, curr_period, tri_val);
-  }
-
-  if(Harmonics_State){
-    fin_pitch_val = AddHarmonics(curr_pitch_val, curr_freq, 2);
-
-    // delete this later 
-    fin_pitch_val = AddHarmonics(curr_pitch_val, curr_freq, 3);
-    fin_pitch_val = AddHarmonics(curr_pitch_val, curr_freq, 4);
-    fin_pitch_val = AddHarmonics(curr_pitch_val, curr_freq, 5);
-  }
-
-  if(Equilizer_State){
-    // set coefficinet for biquad iir filter 
-    set_biquad_coefs(f0_low, f0_mid, f0_high, samp_freq, Q);
-
-    // run filter 
-    fin_pitch_val = EQfunction(curr_pitch_val, gain_low, gain_mid, gain_high);
-  }
-
-  if(!SquareWave_State && !TriangleWave_State && !Harmonics_State && !Equilizer_State){
+  } else if (SineWave_State) {
     fin_pitch_val = curr_pitch_val;
+  } else {
+    fin_pitch_val = curr_pitch_val;
+  }
+
+  // Harmonics
+  for (int i = 0; i < 10; i++) {
+    if (harm_data[i]) {
+      fin_pitch_val = AddHarmonics(fin_pitch_val, curr_freq, i + 1);
+    }
+  }
+
+  // Equilizer
+  if (low != last_low_val || mid != last_low_mid || high != last_low_high) {
+    set_biquad_coefs(f0_low, f0_mid, f0_high, samp_freq, Q);
+    last_low_val = low;
+    last_low_mid = mid;
+    last_low_high = high;
+  }
+
+  if (gain_low != 0 || gain_mid != 0 || gain_high != 0) {
+    fin_pitch_val = EQfunction(fin_pitch_val, gain_low, gain_mid, gain_high);
   }
 
   // Output corresponding analogue value, one shot mode

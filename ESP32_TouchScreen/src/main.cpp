@@ -1,4 +1,4 @@
-// ESP32 Touch Screen Version 3.0//
+// ESP32 Touch Screen Version 4.0//
 
 // bring in needed libraries 
 #include <TFT_eSPI.h>
@@ -9,13 +9,14 @@
 #include <math.h>
 #include <ArduinoJson.h>
 #include <esp_now.h>
+#include <esp_err.h>
 #include <SPIFFS.h>
 #include <ESPASyncWebServer.h>
 #include <WebSocketsServer.h>
 
 // Read pin for esp32 data theremin data
 const int analogPin = 34;  // GPIO34 = ADC1 Chan 6
-const char* gui_ver = "ThereminOS Ver. 3.0";
+const char* gui_ver = "ThereminOS Ver. 4.0";
 
 //Webserver Setup
 const char* ssid = "Boneca-Ambalabu";
@@ -136,6 +137,19 @@ lv_obj_t * sqr_btn;
   };
 
   settings_struct settings;
+
+  // ESP_DSP code sender
+  void For_ESP_DSP() {
+    settings.l = last_low_val;
+    settings.m = last_mid_val;
+    settings.h = last_high_val;
+    for (int i = 0; i < 10; i++) {
+      settings.h_data[i] = harm_data[i];
+    }
+    for (int i = 0; i < 3; i++) {
+      settings.w_data[i] = wave_data[i];
+    }
+  }
 
   void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
     Serial.print("\r\nLast Packet Send Status:\t");
@@ -611,8 +625,8 @@ if (!SPIFFS.begin(true)) {
   return;
 }
 
-WiFi.mode(WIFI_AP);
-Serial.println(WiFi.softAP(ssid, password) ? "\nWiFi AP Ready!" : "\nWiFi AP Failed!");
+WiFi.mode(WIFI_AP_STA);
+Serial.println(WiFi.softAP(ssid, password, 1) ? "\nWiFi AP Ready!" : "\nWiFi AP Failed!");
 Serial.print("IP address = ");
 Serial.println(WiFi.softAPIP());
 
@@ -641,6 +655,7 @@ webSocket.begin();
 //webSocket.onEvent(webSocketEvent);
 
 server.begin();
+esp_err_t esp_wifi_set_channel(1);
 
 if (esp_now_init() != ESP_OK) {
   Serial.println("Error initializing ESP-NOW");
@@ -653,8 +668,9 @@ esp_now_register_send_cb(OnDataSent);
 
 // Register peer
 memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-peerInfo.channel = 0;  
+peerInfo.channel = 1;  
 peerInfo.encrypt = false;
+
 
 // Add peer        
 if (esp_now_add_peer(&peerInfo) != ESP_OK){
@@ -666,31 +682,28 @@ if (esp_now_add_peer(&peerInfo) != ESP_OK){
 }
   
 void loop() {
-  //Data to send to other ESP32
-  settings.l = last_low_val;
-  settings.m = last_mid_val;
-  settings.h = last_high_val;
-  for (int i = 0; i < 10; i++) {
-    settings.h_data[i] = harm_data[i];
-  }
-  for (int i = 0; i < 3; i++) {
-    settings.w_data[i] = wave_data[i];
-  }
-  //Serial.printf("%d %d %d", last_low_val, last_mid_val, last_high_val);
+
+  lv_tick_inc(5);     // tell LVGL how much time has passed
+  lv_task_handler();  // let the GUI do its work
   
+  webSocket.loop();                                       // Update function for the webSockets 
+
+  //Data send to other ESP32
+  For_ESP_DSP();
+  
+  // Debugging
   esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &settings, sizeof(settings));
   if (result == ESP_OK) {
     Serial.println("Sent with success");
   } else {
     Serial.println("Error sending data");
   }
-  
 
-  lv_task_handler();  // let the GUI do its work
-  lv_tick_inc(5);     // tell LVGL how much time has passed
-  delay(5);           // let this time pass
-  
-  webSocket.loop();                                       // Update function for the webSockets 
+  Serial.printf("esp_now_send() returned: %d (%s)\n",
+                result,
+                esp_err_to_name(result));
+  // Debugging 
+
   unsigned long now = millis();                           // read out the current "time" ("millis()" gives the time in ms since the ESP started)
   if ((unsigned long)(now - previousMillis) > interval) { // check if "interval" ms has passed since last time the clients were updated
     previousMillis = now;                                 // reset previousMillis
@@ -700,6 +713,8 @@ void loop() {
 
     //sendJson("graph_update", voltage);
   }
+
+  delay(5);           // let this time pass
 }
 
 String settingsToJson() {
@@ -727,22 +742,24 @@ String settingsToJson() {
 }
 
 void sendSettingsUpdate() {
-JsonDocument doc;
-doc["l"] = settings.l;
-doc["m"] = settings.m;
-doc["h"] = settings.h;
+  JsonDocument doc;
+  doc["l"] = settings.l;
+  doc["m"] = settings.m;
+  doc["h"] = settings.h;
 
-JsonArray h_array = doc["harmonics"].to<JsonArray>();
-for (int i = 0; i < 10; i++) {
-  h_array.add(settings.h_data[i]);
-}
+  JsonArray h_array = doc["harmonics"].to<JsonArray>();
+  for (int i = 0; i < 10; i++)
+  {
+    h_array.add(settings.h_data[i]);
+  }
 
-JsonArray w_array = doc["waveform"].to<JsonArray>();
-for (int i = 0; i < 3; i++) {
-  w_array.add(settings.w_data[i]);
-}
+  JsonArray w_array = doc["waveform"].to<JsonArray>();
+  for (int i = 0; i < 3; i++)
+  {
+    w_array.add(settings.w_data[i]);
+  }
 
-String jsonStr;
-serializeJson(doc, jsonStr);
-webSocket.broadcastTXT(jsonStr);
+  String jsonStr;
+  serializeJson(doc, jsonStr);
+  webSocket.broadcastTXT(jsonStr);
 }
