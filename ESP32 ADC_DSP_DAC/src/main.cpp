@@ -1,4 +1,4 @@
-// ESP32 ADC/DAC Version 8.0 //
+// ESP32 ADC/DAC Version 8.5 //
 
 // bring in required libraries 
 #include <Arduino.h>
@@ -48,6 +48,10 @@ int high;
 bool harm_data[10];
 bool wave_data[3];
 
+//70:b8:f6:5c:cc:c0 ESP32 Touch MAC ADDRESS
+uint8_t broadcastAddress[] = {0x70, 0xb8, 0xf6, 0x5c, 0xcc, 0xc0};
+
+// inputs package from touch screen w/ object declaration
 struct settings_struct {
   int l;
   int m;
@@ -57,6 +61,14 @@ struct settings_struct {
 };
 
 settings_struct settings;
+
+// outputs package to touch screen w/ object declaration
+struct outP_inP_struct {
+    float in_pitch;
+    float out_pitch;
+};
+
+outP_inP_struct to_touch; 
 
 void OnDataRecv (const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&settings, incomingData, sizeof(settings));
@@ -164,7 +176,7 @@ float EQfunction(float in_signal, float db_low, float db_mid, float db_high){
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("ESP32 ADC/DAC Version 8.0");
+  Serial.println("ESP32 ADC/DAC Version 8.5");
   WiFi.mode(WIFI_STA);
   esp_err_t esp_wifi_set_channel(1);
   // ADC characteristics, channel 1 ADC, Attenuated to max 3.9 V,  12 bit precision
@@ -205,7 +217,7 @@ void loop() {
   TriangleWave_State = wave_data[1];
   SineWave_State = wave_data[0];
 
-  // Equilizer modification
+  // Equilizer modification values
   gain_low = low;
   gain_mid = mid;
   gain_high = high;
@@ -243,5 +255,10 @@ void loop() {
   // Output corresponding analogue value, one shot mode
   dac_output_voltage(DAC_CHANNEL_2, fin_pitch_val);
   pre_pitch_val = curr_pitch_val;
+
+  // Output values to EPS32 Touch for web app broadcasting 
+  to_touch.in_pitch = curr_pitch_val;
+  to_touch.out_pitch = fin_pitch_val;
+  esp_now_send(broadcastAddress, (uint8_t *)&to_touch, sizeof(to_touch));
   
 }// end main loop
