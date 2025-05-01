@@ -1,4 +1,4 @@
-// ESP32 Touch Screen Version 4.5//
+// ESP32 Touch Screen Version 4.75//
 
 // bring in needed libraries 
 #include <TFT_eSPI.h>
@@ -15,8 +15,10 @@
 #include <WebSocketsServer.h>
 
 // Read pin for esp32 data theremin data
-const int analogPin = 34;  // GPIO34 = ADC1 Chan 6
-const char* gui_ver = "ThereminOS Ver. 4.5";
+const float analogPin = 35;  // GPIO36 = ADC1 Chan 0 In Signal from harware 
+const float digitalPin = 39; // GPIO39 = ADC1 Chan 3 Out Signal from ESP32 DSP
+const float voltagePin = 34; // GPIO34 = ADC1 Chan 6 Voltage Signal from hardware 
+const char* gui_ver = "ThereminOS Ver. 4.75";
 
 //Webserver Setup
 const char* ssid = "Boneca-Ambalabu";
@@ -24,8 +26,8 @@ const char* password = "Siddiqui2025";
 
 int interval = 250;                                  // send data to the client every 1000ms -> 1s
 unsigned long previousMillis = 0;                     // we use the "millis()" command for time reference and this will output an unsigned long
-uint8_t broadcastAddress[] = {0x70, 0xb8, 0xf6, 0x5c, 0x9e, 0x7c};
-//70:b8:f6:5c:9e:7c
+uint8_t broadcastAddress[] = {0xF4, 0x65, 0x0B, 0xE8, 0xFE, 0x44};
+//F4:65:0B:E8:FE:44
 AsyncWebServer server(80);
 WebSocketsServer webSocket = WebSocketsServer(81);
 lv_obj_t* harm_buttons[10];
@@ -77,7 +79,7 @@ lv_obj_t * sqr_btn;
 
   //Enum lol thanks chat
   //70:b8:f6:5c:cc:c0 MAC ADDRESS
-  //70:b8:f6:5c:9e:7c ESP32 DSP MAC ADDRESS
+  //F4:65:0B:E8:FE:44 Terra MAC ADDRESS
   typedef enum {
     MAIN_SCREEN,
     HARM_SCREEN,
@@ -112,8 +114,6 @@ lv_obj_t * sqr_btn;
     String msg;
   } struct_message;
 
-  
-
   String success;
   esp_now_peer_info_t peerInfo;
 
@@ -140,13 +140,6 @@ lv_obj_t * sqr_btn;
 
   settings_struct settings;
 
-  struct outP_inP_struct {
-    float in_pitch;
-    float out_pitch;
-  };
-
-  outP_inP_struct from_dsp; 
-
   // ESP_DSP code sender
   void For_ESP_DSP() {
     settings.l = last_low_val;
@@ -169,18 +162,6 @@ lv_obj_t * sqr_btn;
     else{
       success = "Delivery Fail :(";
     }
-  }
-
-  void OnDataRecv(const uint8_t *mac, const uint8_t *incomingData, int len) {
-    memcpy(&from_dsp, incomingData, sizeof(from_dsp));
-    // Just in case, mapping check for web app display 
-    uint8_t inSample = constrain((int)from_dsp.in_pitch, 0, 255);
-    uint8_t outSample = constrain((int)from_dsp.out_pitch, 0, 255);
-  
-    // set it to a string for broadcasting : P
-    String json = "{\"type\":\"signal\",\"inPitch\":" + String(inSample) + ",\"outSignal\":" + String(outSample) + "}";
-  
-    webSocket.broadcastTXT(json);
   }
 
   // If logging is enabled, it will inform the user about what is happening in the library
@@ -600,9 +581,9 @@ lv_obj_t * sqr_btn;
   void setup() {
     String LVGL_Arduino = String("LVGL Library Version: ") + lv_version_major() + "." + lv_version_minor() + "." + lv_version_patch();
     Serial.begin(115200);
-    Serial.println(LVGL_Arduino);
+    Serial.println(LVGL_Arduino); 
 
-    last_low_val = 6; // Default center value (you’re using range 0–12)
+    last_low_val = 6;   // Default center value (you’re using range 0–12)
     last_mid_val = 6;
     last_high_val = 6;
 
@@ -610,7 +591,7 @@ lv_obj_t * sqr_btn;
     lv_init();
     // Register print function for debugging
     lv_log_register_print_cb(log_print);
-
+  
     // Start the SPI for the touchscreen and init the touchscreen
     touchscreenSPI.begin(XPT2046_CLK, 19, XPT2046_MOSI, XPT2046_CS);
     touchscreen.begin();
@@ -618,17 +599,17 @@ lv_obj_t * sqr_btn;
     // Note: in some displays, the touchscreen might be upside down, so you might need to set the rotation to 0: touchscreen.setRotation(0);
     touchscreen.setRotation(2);
     // Create a display object
-    lv_display_t *disp;
+    lv_display_t * disp;
     // Initialize the TFT display using the TFT_eSPI library
     disp = lv_tft_espi_create(SCREEN_WIDTH, SCREEN_HEIGHT, draw_buf, sizeof(draw_buf));
     lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_270);
-
+      
     // Initialize an LVGL input device object (Touchscreen)
-    lv_indev_t *indev = lv_indev_create();
+    lv_indev_t * indev = lv_indev_create();
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
     // Set the callback function to read Touchscreen input
     lv_indev_set_read_cb(indev, touchscreen_read);
-    void *scrn_sel = (void *)1;
+    void * scrn_sel = (void *) 1;
     Serial.printf("%d", scrn_sel);
 
     screen = lv_obj_create(NULL);
@@ -640,70 +621,66 @@ lv_obj_t * sqr_btn;
     // Function to draw the GUI (text, buttons and sliders)
     lv_create_main_gui();
 
-    // Setup for webserver
-    if (!SPIFFS.begin(true))
-    {
-      Serial.println("SPIFFS Mount Failed");
-      return;
-    }
+    //Setup for webserver
+if (!SPIFFS.begin(true)) {
+  Serial.println("SPIFFS Mount Failed");
+  return;
+}
 
-    WiFi.mode(WIFI_AP_STA);
-    Serial.println(WiFi.softAP(ssid, password, 1) ? "\nWiFi AP Ready!" : "\nWiFi AP Failed!");
-    Serial.print("IP address = ");
-    Serial.println(WiFi.softAPIP());
+WiFi.mode(WIFI_AP_STA);
+Serial.println(WiFi.softAP(ssid, password, 1) ? "\nWiFi AP Ready!" : "\nWiFi AP Failed!");
+Serial.print("IP address = ");
+Serial.println(WiFi.softAPIP());
 
-    server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
-    /*
-    server.on("/data", HTTP_GET, [](AsyncWebServerRequest *request){
-      int sensorValue = analogRead(analogPin);
-      float voltage = (sensorValue / 4095.0) * 3.3;
-      String json = "{\"Voltage\": " + String(voltage,3) + "}";
-      request->send(200, "application/json", json);
-    });
-    */
-    server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request)
-              {
+server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
+/*
+server.on("/data", HTTP_GET, [](AsyncWebServerRequest *request){
+  int sensorValue = analogRead(analogPin);
+  float voltage = (sensorValue / 4095.0) * 3.3;
+  String json = "{\"Voltage\": " + String(voltage,3) + "}";
+  request->send(200, "application/json", json);
+});
+*/
+server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request){
   String json = settingsToJson();
-  request->send(200, "application/json", json); });
+  request->send(200, "application/json", json);
+});
 
-    server.on("/data", HTTP_GET, [](AsyncWebServerRequest *request)
-              { request->send(SPIFFS, "/index.html"); });
-    // server.onNotFound([](AsyncWebServerRequest *request) {
-    //   request->send(404, "text/plain", "File not found.");
-    // });
+server.on("/data", HTTP_GET, [](AsyncWebServerRequest *request) {
+  request->send(SPIFFS, "/index.html");
+});
+//server.onNotFound([](AsyncWebServerRequest *request) {
+//  request->send(404, "text/plain", "File not found.");
+//});
 
-    webSocket.begin();
-    // webSocket.onEvent(webSocketEvent);
+webSocket.begin();
+//webSocket.onEvent(webSocketEvent);
 
-    server.begin();
-    esp_err_t esp_wifi_set_channel(1);
+server.begin();
+esp_err_t esp_wifi_set_channel(1);
 
-    if (esp_now_init() != ESP_OK)
-    {
-      Serial.println("Error initializing ESP-NOW");
-      return;
-    }
+if (esp_now_init() != ESP_OK) {
+  Serial.println("Error initializing ESP-NOW");
+  return;
+}
 
-    // Once ESPNow is successfully Init, we will register for Send CB to
-    // get the status of Trasnmitted packet
-    esp_now_register_send_cb(OnDataSent);
-    esp_now_register_recv_cb(OnDataRecv);
+// Once ESPNow is successfully Init, we will register for Send CB to
+// get the status of Trasnmitted packet
+esp_now_register_send_cb(OnDataSent);
 
-    // Register peer
-    memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-    peerInfo.channel = 1;
-    peerInfo.encrypt = false;
+// Register peer
+memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+peerInfo.channel = 1;  
+peerInfo.encrypt = false;
 
-    // Add peer
-    if (esp_now_add_peer(&peerInfo) != ESP_OK)
-    {
-      Serial.println("Failed to add peer");
-      return;
-    }
-    else
-    {
-      Serial.println("Added Peer Successfully!!");
-    }
+
+// Add peer        
+if (esp_now_add_peer(&peerInfo) != ESP_OK){
+  Serial.println("Failed to add peer");
+  return;
+} else {
+  Serial.println("Added Peer Successfully!!");
+}
 }
   
 void loop() {
@@ -733,37 +710,40 @@ void loop() {
   if ((unsigned long)(now - previousMillis) > interval) { // check if "interval" ms has passed since last time the clients were updated
     previousMillis = now;                                 // reset previousMillis
 
-    int sensorValue = analogRead(analogPin);
-    float voltage = (sensorValue / 4095.0) * 3.3;
+    int In_Sign_Val = analogRead(analogPin);
+    int Out_Sign_Val = analogRead(digitalPin);
+    int Out_Volt_Val = analogRead(voltagePin);
 
-    //sendJson("graph_update", voltage);
+    String adcJson = "{";
+    adcJson += "\"type\":\"oscilloscope\",";
+    adcJson += "\"in_sign\":" + String(In_Sign_Val) + ",";
+    adcJson += "\"out_sign\":" + String(Out_Sign_Val) + ",";
+    adcJson += "\"volt_sign\":" + String(Out_Volt_Val);
+    adcJson += "}";
+  
+    webSocket.broadcastTXT(adcJson);
   }
 
   delay(5);           // let this time pass
 }
 
-String settingsToJson()
-{
-  String json = "{\"type\":\"settings\",";
+String settingsToJson() {
+  String json = "{";
   json += "\"l\":" + String(settings.l) + ",";
   json += "\"m\":" + String(settings.m) + ",";
   json += "\"h\":" + String(settings.h) + ",";
 
   json += "\"h_data\":[";
-  for (int i = 0; i < 10; i++)
-  {
+  for (int i = 0; i < 10; i++) {
     json += String(settings.h_data[i]);
-    if (i < 9)
-      json += ",";
+    if (i < 9) json += ",";
   }
   json += "],";
 
   json += "\"w_data\":[";
-  for (int i = 0; i < 3; i++)
-  {
+  for (int i = 0; i < 3; i++) {
     json += String(settings.w_data[i]);
-    if (i < 2)
-      json += ",";
+    if (i < 2) json += ",";
   }
   json += "]";
 

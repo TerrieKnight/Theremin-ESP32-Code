@@ -7,5 +7,9 @@
 			"path": "ESP32_TouchScreen"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"files.associations": {
+			"functional": "cpp"
+		}
+	}
 }

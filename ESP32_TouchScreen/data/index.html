@@ -1,4 +1,4 @@
-<!-- ESP32 Web App Version 3.5 -->
+<!-- ESP32 Web App Version 3.75 -->
 <!DOCTYPE html>
 <html lang="en">
     <head>
@@ -134,40 +134,43 @@
     W_Sock.onmessage = function (event) {
       var data = JSON.parse(event.data);
 
-      if (data.type === "settings") {
-        // Waveform 
+      if (data.type === "oscilloscope") {
+        // Oscilloscope values 
+        const inSample   = data.in_sign;   
+        const outSample  = data.out_sign;
+        const voltSample = data.volt_sign;
+        const visSample = (inSample + outSample + voltSample) / 3;
+
+        inScope.updateSignal(inSample);
+        outScope.updateSignal(outSample);
+        voltScope.updateSignal(voltSample);
+        visScope.updateSignal(visSample);
+      } else {
+        // Update waveform name
         const Active_Waves = ["Sine Wave", "Triangle Wave", "Sqaure Wave"];
         const waveform = data.waveform || [true, false, false];
         const waveformIndex = waveform.findIndex(v => v === true);
         document.getElementById("Curr_WF").textContent = Active_Waves[waveformIndex] || "Sine Wave";
 
-        // Harmonics 
+        // Update harmonics display
         const harmonics = data.harmonics || [];
         const WA_Harm = document.getElementById("All_Harmonics").getElementsByClassName("Harmonics");
-
         for (let i = 0; i < harmonics.length && i < WA_Harm.length; i++) {
           WA_Harm[i].classList.toggle("used", harmonics[i]);
           WA_Harm[i].classList.toggle("unused", !harmonics[i]);
         }
 
-        // Equilizer
+        // Update EQ sliders
         document.getElementById("Low_Band").value = data.l;
         document.getElementById("LB_val").textContent = data.l;
-
         document.getElementById("Mid_Band").value = data.m;
         document.getElementById("MB_val").textContent = data.m;
-
         document.getElementById("Up_Band").value = data.h;
         document.getElementById("UB_val").textContent = data.h;
-
-      } else if (data.type === "signal") {
-        // Oscilloscope 
-        if (data.inPitch !== undefined) updateInPitch(data.inPitch);
-        if (data.outSignal !== undefined) updateOutSignal(data.outSignal);
       }
-    }
+    };
   </script>
-  </body><!--End Side Bar Section-->
+</body><!--End Side Bar Section-->
 
 <!-- Primary Data Section-->
 <body>
@@ -210,7 +213,7 @@
 
         const canvasWidth = canvas.width;
         const canvasHeight = canvas.height;
-        const voltsPerBit = 5 / 255;
+        const voltsPerBit = 3.3 / 4095;
         const signal = new Array(canvasWidth).fill(0);
 
         function draw() {
@@ -244,78 +247,21 @@
           ctx.stroke();
         }
 
-
-        function pushSample(sample) {
+        function updateSignal(sample) {
           signal.shift();
           signal.push(sample);
           draw();
         }
-        
-        return pushSample;
+
+        return { updateSignal };
       }
 
       // Setup all 4 scopes
-      const updateOutSignal = setupOscilloscope("Out_Signal", "#00FF00");
-      const updateInPitch = setupOscilloscope("In_Pitch", "#FF5733");
+      const outScope  = setupOscilloscope("Out_Signal", "#00FF00");
+      const inScope   = setupOscilloscope("In_Pitch", "#FF5733");
+      const voltScope = setupOscilloscope("Out_Vol", "#33C3FF");
+      const visScope  = setupOscilloscope("Vis_Signal", "#FF33EC");
     </script>
-
-        <!-- Demo Oscilloscope Script-->
-        <script>
-          function DemosetupOscilloscope(canvasId, color) {
-            const canvas = document.getElementById(canvasId);
-            const ctx = canvas.getContext("2d");
-
-            const canvasWidth = canvas.width;
-            const canvasHeight = canvas.height;
-            const voltsPerBit = 5 / 255;
-            const signal = new Array(canvasWidth).fill(0);
-
-            function draw() {
-              ctx.fillStyle = "#54626F";
-              ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-
-              // Grid
-              ctx.strokeStyle = "#444";
-              ctx.lineWidth = 1;
-              for (let i = 0; i <= 5; i++) {
-                const y = (i / 5) * canvasHeight;
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(canvasWidth, y);
-                ctx.stroke();
-              }
-
-              // Signal
-              ctx.strokeStyle = color;
-              ctx.lineWidth = 2;
-              ctx.beginPath();
-              for (let x = 0; x < signal.length; x++) {
-                const voltage = signal[x] * voltsPerBit;
-                const y = canvasHeight - (voltage / 5) * canvasHeight;
-                if (x === 0) {
-                  ctx.moveTo(x, y);
-                } else {
-                  ctx.lineTo(x, y);
-                }
-              }
-              ctx.stroke();
-            }
-
-            function updateSignal() {
-              // Simulated signal — replace with real input per channel
-              const newSample = Math.floor(Math.random() * 256);
-              signal.shift();
-              signal.push(newSample);
-              draw();
-            }
-
-            setInterval(updateSignal, 1000 / 3000); // 3kHz sampling
-          }
-
-          // Setup all 4 scopes
-          DemosetupOscilloscope("Out_Vol", "#33C3FF");
-          DemosetupOscilloscope("Vis_Signal", "#FF33EC"); 
-        </script>
 
 </body><!-- End Primary Data Section-->
 
